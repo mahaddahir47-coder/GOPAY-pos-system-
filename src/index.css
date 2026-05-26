@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Reference Image Color Palette colors */
+  --color-teal-500: #00C2B2;
+  --color-teal-600: #008E82;
+  --color-navy-950: #0B1220;
+  --color-navy-900: #0F1829;
+  --color-navy-850: #162238;
+  --color-navy-800: #1C2B46;
+  --color-navy-700: #2C3E5B;
+  --color-slate-500: #6B7280;
+  --color-light-gray: #E5E7EB;
+}
+
+body {
+  background-color: #0B1220 !important;
+  color: #E5E7EB;
+  font-family: var(--font-sans);
+}
+
+@media print {
+  html, body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-family: monospace !important;
+    font-size: 11pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #root {
+    background: none !important;
+  }
+
+  /* Hide entire dashboard workflow during invoice print */
+  header,
+  main,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+@keyframes receiptFeed {
+  0% {
+    max-height: 0px;
+    opacity: 0.1;
+    transform: translateY(-10px) scaleY(0.9);
+  }
+  30% {
+    max-height: 120px;
+    opacity: 0.9;
+  }
+  100% {
+    max-height: 600px;
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+.receipt-roller-slide {
+  animation: receiptFeed 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top center;
+}
+
