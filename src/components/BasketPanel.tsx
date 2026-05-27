@@ -1,10 +1,37 @@
-import React, { useState } from 'react';
-import { Trash2, CreditCard, ShoppingCart, Loader2, Edit2, CheckCircle2, AlertTriangle, Printer, Plus, Minus, Utensils, Clock, Truck, ChevronDown, ExternalLink } from 'lucide-react';
-import { CartItem, GoPayWallet, MerchantSettings, Product, Table, TabID } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Trash2, CreditCard, ShoppingCart, Loader2, Edit2, CheckCircle2, AlertTriangle, Printer, Plus, Minus, Utensils, Clock, Truck, ChevronDown, ExternalLink, QrCode, Copy } from 'lucide-react';
+import { CartItem, GoPayWallet, MerchantSettings, Product, Table, TabID, Invoice } from '../types';
 import { PrinterController } from './PrinterController';
 import { ThermalPrinterDevice } from '../utils/printer';
+import QRCode from 'qrcode';
+
+// Custom internal QrCanvas renderer with white background for high contrast scanning
+const QrCanvas: React.FC<{ value: string; size?: number }> = ({ value, size = 150 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    try {
+      QRCode.toCanvas(canvasRef.current, value, {
+        width: size,
+        margin: 1,
+        color: { dark: '#091124', light: '#FFFFFF' },
+        errorCorrectionLevel: 'H', // Use high error correction to allow center overlay safely
+      });
+    } catch (err) {
+      console.error('QR Code Generation failure:', err);
+    }
+  }, [value, size]);
+
+  return (
+    <div className="bg-white p-2.5 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100/90">
+      <canvas ref={canvasRef} style={{ width: `${size - 16}px`, height: `${size - 16}px` }} className="rounded-xl" />
+    </div>
+  );
+};
 
 interface BasketPanelProps {
+  activeInvoiceId?: string;
   cart: CartItem[];
   settings: MerchantSettings;
   selectedWallet: GoPayWallet;
@@ -44,6 +71,7 @@ interface BasketPanelProps {
 
 
 export const BasketPanel: React.FC<BasketPanelProps> = ({
+  activeInvoiceId,
   cart,
   settings,
   selectedWallet,
@@ -81,6 +109,7 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
   const [isEditingTax, setIsEditingTax] = useState(false);
   const [taxInputVal, setTaxInputVal] = useState(settings.taxRate.toString());
   const [nfcWriteStatus, setNfcWriteStatus] = useState<'idle' | 'writing' | 'success' | 'failed'>('idle');
+  const [isCopied, setIsCopied] = useState(false);
 
   // Pricing calculations
   const subtotal = cart.reduce((acc, item) => {
@@ -90,6 +119,33 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
 
   const tax = subtotal * (settings.taxRate / 100);
   const total = subtotal + tax;
+
+  const currentInvoice: Invoice = {
+    id: activeInvoiceId || 'R-10245',
+    items: cart,
+    subtotal: subtotal,
+    tax: tax,
+    total: total.toFixed(2) as any,
+    merchantName: settings.merchantName,
+    merchantId: settings.merchantId,
+    wallet: selectedWallet,
+    timestamp: new Date().toISOString(),
+    nfcPayload: JSON.stringify({
+      merchant: settings.merchantName,
+      id: settings.merchantId,
+      amount: total.toFixed(2),
+      wallet: selectedWallet,
+    }),
+  };
+
+  const invoice = currentInvoice;
+
+  const getPaymentLink = () => {
+    const activeMerchantId = invoice.merchantId || "R-10245";
+    return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
+  };
+
+  const paymentLink = getPaymentLink();
 
   const handleUpdateTax = (e: React.FormEvent) => {
     e.preventDefault();
@@ -459,113 +515,151 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
         </div>
       </div>
 
-      {/* Embedded Thermal Printer Connectivity Manager & Print Trigger Bar */}
-      <div className="pt-2">
-        <PrinterController
-          isPrinterConnected={isPrinterConnected}
-          onSetPrinterConnected={onSetPrinterConnected}
-          autoPrintEnabled={autoPrintEnabled}
-          onSetAutoPrintEnabled={onSetAutoPrintEnabled}
-          connectedDevice={connectedDevice}
-          onSetConnectedDevice={onSetConnectedDevice}
-          onTriggerPrint={onTriggerPrint}
-          hasOrderItems={cart.length > 0}
-          paymentStatus={paymentStatus}
-        />
-      </div>
+      {/* Automated, Dynamic QR Code Container */}
+      {settings.merchantId && (
+        cart.length > 0 ? (
+          <div className="relative bg-white w-full rounded-2xl p-4 shadow-lg border border-slate-100 flex flex-col items-center justify-center space-y-3 animate-in fade-in-50 duration-250">
+            
+            {/* Subtle corner brackets in Teal */}
+            <div className="absolute top-3 left-3 w-3 h-3 border-t border-l border-[#00C2B2] rounded-tl-sm"></div>
+            <div className="absolute top-3 right-3 w-3 h-3 border-t border-r border-[#00C2B2] rounded-tr-sm"></div>
+            <div className="absolute bottom-3 left-3 w-3 h-3 border-b border-l border-[#00C2B2] rounded-bl-sm"></div>
+            <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-[#00C2B2] rounded-br-sm"></div>
+
+            {/* Heading */}
+            <div className="text-center select-none">
+              <h4 className="text-slate-900 font-extrabold text-[12px] tracking-tight">Active Payment QR</h4>
+              <p className="text-[#6B7280] text-[9px] scale-[0.95] leading-none mt-0.5">
+                Live automated checkout link
+              </p>
+            </div>
+
+            {/* Dynamic QrCanvas */}
+            <div className="relative flex items-center justify-center p-0.5 bg-white rounded-xl">
+              <QrCanvas value={paymentLink} size={110} />
+              <div className="absolute w-6 h-6 bg-[#00C2B2] rounded-md flex items-center justify-center border border-white shadow-sm">
+                <span className="text-white font-black text-[8px] leading-none">GP</span>
+              </div>
+            </div>
+
+            {/* GoPay styled logomark underneath QR */}
+            <div className="flex flex-col items-center justify-center select-none leading-none">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-black text-[#00C2B2] tracking-tight">GoPay Broadcast</span>
+                <span className="text-[#00C2B2] text-[8px] font-bold font-mono animate-pulse">)))</span>
+              </div>
+            </div>
+
+            {/* HIGH-CONTRAST DYNAMIC DATA METRICS */}
+            <div className="w-full bg-slate-50 border border-slate-100/80 rounded-xl p-2.5 space-y-1.5 text-left text-[10px] text-slate-700 font-semibold leading-normal">
+              <div className="flex items-center justify-between border-b border-slate-200/50 pb-1">
+                <span className="text-[8px] text-slate-400 font-bold uppercase">Merchant ID</span>
+                <span className="font-mono text-slate-900 font-bold">{settings.merchantId || "R-10245"}</span>
+              </div>
+
+              <div className="flex items-center justify-between border-b border-slate-200/50 pb-1">
+                <span className="text-[8px] text-slate-400 font-bold uppercase">Carrier Target</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                    {selectedWallet === 'evc' && <img src="https://i.postimg.cc/wT0gFtgz/EVCPlus.png" className="w-full h-full object-contain" referrerPolicy="no-referrer" />}
+                    {selectedWallet === 'edahab' && <img src="https://i.postimg.cc/L6N2vqRx/Edahab.png" className="w-full h-full object-contain" referrerPolicy="no-referrer" />}
+                    {selectedWallet === 'jeeb' && <img src="https://i.postimg.cc/4NXvffNj/Jeeb.png" className="w-full h-full object-contain" referrerPolicy="no-referrer" />}
+                    {selectedWallet === 'premier' && <img src="https://i.postimg.cc/dVmz7t8s/Premier-bank.png" className="w-full h-full object-contain" referrerPolicy="no-referrer" />}
+                  </div>
+                  <span className="font-bold text-slate-900 capitalize">{selectedWallet}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[8px] text-slate-400 font-bold uppercase">Amount Due</span>
+                <span className="font-mono text-[#00C2B2] font-extrabold">${total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Copy Link Container directly integrated inside the single white card */}
+            <div className="w-full flex items-center justify-between gap-1 bg-slate-100/60 border border-slate-200/30 px-2.5 py-1 rounded-md text-left leading-none">
+              <span className="text-[8px] font-mono text-slate-400 truncate max-w-[130px]" title={paymentLink}>
+                {paymentLink}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                    navigator.clipboard.writeText(paymentLink);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }
+                }}
+                className="text-[8px] text-[#00C2B2] hover:text-[#00ebd7] font-extrabold shrink-0 flex items-center gap-0.5 cursor-pointer"
+              >
+                {isCopied ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500 font-bold" />
+                    <span className="text-emerald-500 font-bold">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-2.5 h-2.5 text-slate-400 font-bold" />
+                    <span className="text-slate-500 font-bold">Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative bg-white w-full rounded-2xl p-4 shadow-lg border border-slate-100 flex flex-col items-center justify-center space-y-3 animate-in fade-in-50 duration-250">
+            
+            {/* Subtle corner brackets in Teal */}
+            <div className="absolute top-3 left-3 w-3 h-3 border-t border-l border-[#00C2B2] rounded-tl-sm"></div>
+            <div className="absolute top-3 right-3 w-3 h-3 border-t border-r border-[#00C2B2] rounded-tr-sm"></div>
+            <div className="absolute bottom-3 left-3 w-3 h-3 border-b border-l border-[#00C2B2] rounded-bl-sm"></div>
+            <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-[#00C2B2] rounded-br-sm"></div>
+
+            {/* Heading */}
+            <div className="text-center select-none">
+              <h4 className="text-slate-900 font-extrabold text-[12px] tracking-tight">Permanent Counter QR</h4>
+              <p className="text-[#6B7280] text-[9px] scale-[0.95] leading-none mt-0.5">
+                Scan to initiate checkout at this terminal
+              </p>
+            </div>
+
+            {/* Dynamic QrCanvas with permanent merchant link */}
+            <div className="relative flex items-center justify-center p-0.5 bg-white rounded-xl">
+              <QrCanvas value={paymentLink} size={110} />
+              <div className="absolute w-6 h-6 bg-[#00C2B2] rounded-md flex items-center justify-center border border-white shadow-sm">
+                <span className="text-white font-black text-[8px] leading-none">GP</span>
+              </div>
+            </div>
+
+            {/* GoPay styled logomark underneath QR */}
+            <div className="flex flex-col items-center justify-center select-none leading-none">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-black text-[#00C2B2] tracking-tight">GoPay Counter ID</span>
+              </div>
+            </div>
+
+            {/* Merchant ID Display */}
+            <div className="w-full bg-slate-50 border border-slate-100/80 rounded-xl p-2.5 flex items-center justify-between text-[10px] text-slate-700 font-semibold leading-normal">
+                <span className="text-[8px] text-slate-400 font-bold uppercase">Terminal ID</span>
+                <span className="font-mono text-slate-900 font-bold">{settings.merchantId}</span>
+            </div>
+          </div>
+        )
+      )}
 
       {/* New Proceed To Payment Button based on reference images */}
       {onProceedToPayment && cart.length > 0 && (
-        <div className="pt-2">
+        <div className="pt-1">
           <button
             type="button"
             onClick={onProceedToPayment}
-            className="w-full py-4 px-4 rounded-2xl bg-[#00C2B2] hover:bg-[#008E82] text-white text-xs font-extrabold uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-teal-500/10 hover:shadow-teal-500/20 active:scale-[0.98] transition-all cursor-pointer animate-pulse"
+            className="w-full py-3.5 px-4 rounded-2xl bg-[#00C2B2] hover:bg-[#008E82] text-white text-xs font-extrabold uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-teal-500/10 hover:shadow-teal-500/20 active:scale-[0.98] transition-all cursor-pointer"
           >
             <CreditCard className="w-4 h-4 text-white" />
             <span>Proceed to Payment</span>
           </button>
         </div>
       )}
-
-      {/* Interactive Direct Order Simulation & Wallet Sandbox Buttons */}
-      <div className="pt-2 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={onSimulateDirectOrder}
-          disabled={cart.length === 0}
-          className={`py-3 px-3.5 rounded-2xl font-bold text-[11px] uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 border active:scale-[0.98] cursor-pointer ${
-            cart.length === 0
-              ? 'bg-[#050c18] text-[#8C9AA9]/30 border-blue-900/10 cursor-not-allowed'
-              : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500/30 text-white shadow-emerald-500/10 hover:shadow-emerald-500/20'
-          }`}
-          title="Directly simulate order checkout and jump to orders tab instantly"
-        >
-          <span>⚡ Direct Order</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onOpenInlineSimulator}
-          disabled={cart.length === 0}
-          className={`py-3 px-3.5 rounded-2xl font-bold text-[11px] uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 border active:scale-[0.98] cursor-pointer ${
-            cart.length === 0
-              ? 'bg-[#050c18] text-[#8C9AA9]/30 border-blue-900/10 cursor-not-allowed'
-              : 'bg-[#14223f] hover:bg-neutral-800 border-blue-500/20 hover:border-blue-555 text-blue-400 hover:text-white'
-          }`}
-          title="Launch secure companion Somtel / Hormuud sandbox payment interface"
-        >
-          <span>📱 Open Simulator</span>
-        </button>
-      </div>
-
-      {/* Giant WRITE TO NFC TAG button matched to the screenshot with dual line NOP details */}
-      <div className="pt-2">
-        <button
-          type="button"
-          onClick={handleWriteNfc}
-          disabled={cart.length === 0 || nfcWriteStatus === 'writing'}
-          className={`w-full py-3.5 px-4 rounded-2xl font-bold flex flex-col items-center justify-center transition-all shadow-md select-none border cursor-pointer active:scale-[0.98] ${
-            cart.length === 0
-              ? 'bg-blue-950/20 text-blue-400/30 border-blue-900/10 cursor-not-allowed'
-              : nfcWriteStatus === 'success'
-                ? 'bg-emerald-600 border-emerald-500 text-white shadow-emerald-500/15'
-                : nfcWriteStatus === 'failed'
-                  ? 'bg-rose-600 border-rose-500 text-white shadow-rose-500/15'
-                  : 'bg-[#2F80ED] hover:bg-blue-600 border-[#2F80ED] text-white shadow-blue-500/15 animate-shimmer'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {nfcWriteStatus === 'writing' ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : nfcWriteStatus === 'success' ? (
-              <CheckCircle2 className="h-5 w-5" />
-            ) : nfcWriteStatus === 'failed' ? (
-              <AlertTriangle className="h-5 w-5" />
-            ) : (
-              <div className="text-white flex items-center justify-center font-bold">
-                <span className="animate-pulse font-mono mr-1">(((o)))</span>
-              </div>
-            )}
-            
-            <span className="text-sm font-black tracking-wider uppercase font-sans">
-              {nfcWriteStatus === 'idle' && 'WRITE TO NFC TAG'}
-              {nfcWriteStatus === 'writing' && 'BROADCASTING TO ANTENNA...'}
-              {nfcWriteStatus === 'success' && 'NFC TEXT RECORD WRITTEN SUCCESSFULLY!'}
-              {nfcWriteStatus === 'failed' && 'BROADCAST ERROR / HARDWARE REFUSED'}
-            </span>
-          </div>
-          
-          <span className="text-[10px] opacity-80 font-medium font-sans mt-0.5">
-            {nfcWriteStatus === 'idle' && 'Tap a blank NFC tag to write'}
-            {nfcWriteStatus === 'writing' && 'Bring customer card near receiver ring...'}
-            {nfcWriteStatus === 'success' && 'Receipt information loaded successfully ✓'}
-            {nfcWriteStatus === 'failed' && 'Please try again or use the fallbacks'}
-          </span>
-        </button>
-
-
-      </div>
 
     </div>
   );

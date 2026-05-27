@@ -3,7 +3,6 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BentoCatalog } from './components/BentoCatalog';
 import { BasketPanel } from './components/BasketPanel';
-import { NFCInducer } from './components/NFCInducer';
 import { CheckoutStage } from './components/CheckoutStage';
 import { CustomerWalletSimulator } from './components/CustomerWalletSimulator';
 import { DashboardView } from './components/DashboardView';
@@ -386,6 +385,8 @@ export default function App() {
   // --- CUSTOMER CHECKOUT DECODER ---
   const [isCheckoutView, setIsCheckoutView] = useState<boolean>(false);
   const [urlMerchantId, setUrlMerchantId] = useState<string | null>(null);
+  const [waitingElapsedSeconds, setWaitingElapsedSeconds] = useState<number>(0);
+
   const [checkoutParams, setCheckoutParams] = useState<{
     invoiceId: string;
     merchantName: string;
@@ -394,6 +395,16 @@ export default function App() {
     wallet: GoPayWallet;
     items?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (isCheckoutView && !checkoutParams) {
+      setWaitingElapsedSeconds(0);
+      const timer = setInterval(() => {
+        setWaitingElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isCheckoutView, checkoutParams]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -414,6 +425,18 @@ export default function App() {
       } else if (merchantIdParam) {
         setIsCheckoutView(true);
         setUrlMerchantId(merchantIdParam);
+        
+        const amountParam = params.get('amount');
+        if (amountParam) {
+          const walletParam = (params.get('wallet') as GoPayWallet) || 'evc';
+          setCheckoutParams({
+            invoiceId: params.get('invoiceId') || 'GP-TEMP-' + Math.floor(100000 + Math.random() * 900000),
+            merchantName: merchantIdParam === "738435" ? "Salaam Bank Branch A" : merchantIdParam === "146136" ? "Mogadishu Mall POS-2" : `Merchant Profile (${merchantIdParam})`,
+            merchantId: merchantIdParam,
+            amount: parseFloat(amountParam).toFixed(2),
+            wallet: walletParam,
+          });
+        }
       }
     }
   }, []);
@@ -426,7 +449,7 @@ export default function App() {
           const res = await fetch(`/api/get-terminal-price?merchant=${urlMerchantId}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.success && data.session) {
+            if (data.success && data.session && data.session.amount > 0) {
               const session = data.session;
               setCheckoutParams({
                 invoiceId: session.invoiceId,
@@ -439,11 +462,18 @@ export default function App() {
               
               if (session.status === 'paid') {
                 setPaymentStatus('paid');
+              } else {
+                setPaymentStatus('unpaid');
               }
+            } else {
+              setCheckoutParams(null);
             }
+          } else {
+            setCheckoutParams(null);
           }
         } catch (err) {
           console.warn('Failed to poll terminal price update: ', err);
+          setCheckoutParams(null);
         }
       };
 
@@ -615,11 +645,11 @@ export default function App() {
   // --- REAL-TIME POS LEDGER SYNC TRIGGER ---
   // Broadcast active total amount of terminal cashier basket up to `/api/update-terminal-price`
   useEffect(() => {
-    if (typeof window !== 'undefined' && cart.length > 0 && !isCheckoutView) {
-      const orderAmount = cart.reduce((acc, item) => {
+    if (typeof window !== 'undefined' && !isCheckoutView) {
+      const orderAmount = cart.length > 0 ? (cart.reduce((acc, item) => {
         const pr = item.customPrice !== undefined ? item.customPrice : item.product.price;
         return acc + pr * item.quantity;
-      }, 0) * (1 + settings.taxRate / 100);
+      }, 0) * (1 + settings.taxRate / 100)) : 0;
 
       const updateTerminal = async () => {
         try {
@@ -633,6 +663,7 @@ export default function App() {
               terminal: 'counter_01',
               amount: parseFloat(orderAmount.toFixed(2)),
               provider: selectedWallet,
+              invoiceId: activeInvoiceId || undefined,
             }),
           });
         } catch (err) {
@@ -640,10 +671,10 @@ export default function App() {
         }
       };
 
-      const timer = setTimeout(updateTerminal, 600);
+      const timer = setTimeout(updateTerminal, 300); // Super fast 300ms debounce
       return () => clearTimeout(timer);
     }
-  }, [cart, selectedWallet, settings.merchantId, settings.taxRate, isCheckoutView]);
+  }, [cart, selectedWallet, settings.merchantId, settings.taxRate, isCheckoutView, activeInvoiceId]);
 
   // --- BASKET OPERATIONS HANDLERS ---
   const handleAddProduct = (product: Product, customPrice?: number) => {
@@ -799,39 +830,37 @@ export default function App() {
   if (isCheckoutView) {
     if (!checkoutParams) {
       return (
-        <div className="min-h-screen bg-[#030918] flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-[#0a1122] border border-blue-900/30 rounded-[32px] p-6 text-center space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="space-y-1">
-              <div className="flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
-                <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest font-mono">GoPay Smart Terminal</span>
-              </div>
-              <h2 className="text-lg font-black text-white italic tracking-tight">MOGADISHU POS CONNECT</h2>
-            </div>
-
-            {/* Pulsing visual circle representing a connection gateway */}
-            <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
-              <div className="absolute inset-0 border-[3px] border-dashed border-blue-500/20 rounded-full animate-spin [animation-duration:15s]"></div>
-              <div className="absolute inset-3 border border-blue-500/30 rounded-full animate-ping [animation-duration:3s]"></div>
-              <div className="absolute inset-6 rounded-full bg-gradient-to-tr from-[#122241] to-[#040916] border border-blue-500/40 shadow-[0_0_24px_rgba(47,128,237,0.25)] flex items-center justify-center text-white">
-                <Smartphone className="w-7 h-7 text-blue-400 animate-bounce" />
-              </div>
-            </div>
-
-            {/* Display location labels */}
-            <div className="bg-[#122241]/75 border border-blue-500/25 py-2 px-4 rounded-full inline-flex items-center gap-1.5 justify-center font-mono font-bold text-xs text-white uppercase shadow-inner">
-              📍 TERMINAL: {urlMerchantId === 'desk' ? 'CASHIER DESK' : `MERCHANT ${urlMerchantId || 'STANDBY'}`}
-            </div>
-
+        <div className="min-h-screen bg-[#0B1220] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#0F1829] border border-[#162238]/60 rounded-[32px] p-8 text-center space-y-8 shadow-2xl animate-in zoom-in-95 duration-250">
+            
             <div className="space-y-2">
-              <h3 className="text-xs font-black text-slate-100 uppercase tracking-wide">Awaiting POS Transaction</h3>
-              <p className="text-[11px] text-slate-400 leading-relaxed px-2">
-                Scan successful! Since this is a permanent QR code, please wait briefly while the cashier puts your order into the POS terminal.
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#00C2B2] animate-pulse"></span>
+                <span className="text-[11px] font-black uppercase text-[#00C2B2] tracking-widest font-mono">Secure Gateway</span>
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight">Syncing Terminal...</h2>
             </div>
 
-            <div className="border-t border-blue-900/15 pt-3.5 text-[9px] text-slate-500 font-medium font-mono">
-              Updating dynamically... Do not close page.
+            {/* Pulsing visual connection gateway */}
+            <div className="relative w-32 h-32 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 border-[3px] border-dashed border-[#00C2B2]/20 rounded-full animate-spin [animation-duration:20s]"></div>
+              <div className="absolute inset-4 border border-[#00C2B2]/30 rounded-full animate-ping [animation-duration:3s]"></div>
+              <div className="absolute inset-8 rounded-full bg-[#162238] border border-[#00C2B2]/40 shadow-[0_0_32px_rgba(0,194,178,0.3)] flex items-center justify-center text-white">
+                <Smartphone className="w-10 h-10 text-[#00C2B2] animate-bounce" />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+               <p className="text-xs text-slate-400 font-mono">
+                  {waitingElapsedSeconds > 0 ? `Connecting... ${waitingElapsedSeconds}s` : 'Initializing secure link...'}
+               </p>
+               <div className="bg-[#162238] border border-[#00C2B2]/20 py-2.5 px-5 rounded-full inline-flex items-center gap-2 justify-center font-mono font-bold text-xs text-white uppercase shadow-inner">
+                 <span className="text-slate-400">POS ID:</span> {urlMerchantId || 'UNKNOWN'}
+               </div>
+            </div>
+
+            <div className="text-[10px] text-slate-500 font-medium font-mono pt-4 border-t border-[#162238]">
+              Automated ledger sync active
             </div>
           </div>
         </div>
@@ -839,7 +868,7 @@ export default function App() {
     }
 
     return (
-      <div className="min-h-screen bg-[#030918] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#0B1220] flex items-center justify-center p-4">
         <CustomerWalletSimulator
           invoiceId={checkoutParams.invoiceId}
           merchantName={checkoutParams.merchantName}
@@ -858,7 +887,7 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#030918] text-white flex flex-col font-sans selection:bg-blue-500/30 select-none">
+      <div className="min-h-screen bg-[#0B1220] text-white flex flex-col font-sans selection:bg-[#00C2B2]/20 select-none">
         <LoginView
           cashiers={cashiers}
           activeCashierId={activeCashierId}
@@ -873,7 +902,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030918] text-white flex flex-col font-sans selection:bg-blue-500/30 select-none">
+    <div className="min-h-screen bg-[#0B1220] text-white flex flex-col font-sans selection:bg-[#00C2B2]/20 select-none">
       
       {/* 1. Brand Header */}
       <Header
@@ -1016,6 +1045,7 @@ export default function App() {
                     {/* Right Invoice Receipt draft order slot (col-span-4) */}
                     <div className="xl:col-span-4 flex flex-col h-full justify-between">
                       <BasketPanel
+                        activeInvoiceId={activeInvoiceId}
                         cart={cart}
                         settings={settings}
                         selectedWallet={selectedWallet}
@@ -1136,18 +1166,8 @@ export default function App() {
                 />
               )}
 
-              {/* 4. Bottom Horizontal Bento boxes: NFC Transmitters & qr string payload console (shown on cashier Menu desk only to save screen space) */}
-              {activeTab === 'menu' && !isCheckingOut && (
-                <div className="pt-2">
-                  <NFCInducer
-                    invoice={currentInvoice}
-                    isNfcSupported={isNfcSupported}
-                    onTriggerNfcWrite={handleTriggerNfcWrite}
-                    paymentStatus={paymentStatus}
-                    onOpenInlineSimulator={() => setIsInlineSimOpen(true)}
-                  />
-                </div>
-              )}
+
+              {/* 4. Bottom Horizontal Bento boxes: NFC Transmitters & qr string payload console disabled */}
             </>
           )}
 

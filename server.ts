@@ -36,7 +36,7 @@ async function startServer() {
 
   // 1. Core API Endpoint: Update terminal price
   app.post("/api/update-terminal-price", (req, res) => {
-    const { merchant, terminal, amount, provider } = req.body;
+    const { merchant, terminal, amount, provider, invoiceId } = req.body;
 
     // Reject missing critical parameters
     if (merchant === undefined || amount === undefined) {
@@ -53,15 +53,15 @@ async function startServer() {
     const terminalId = String(terminal || "counter_01");
     const providerStr = String(provider || "evc");
 
-    // Generate a unique invoice lookup token
-    const invoiceId = `INV-${merchantId}-${Date.now().toString().slice(-4)}`;
+    // Use provided invoiceId or generate a unique invoice lookup token
+    const finalInvoiceId = invoiceId || `INV-${merchantId}-${Date.now().toString().slice(-4)}`;
 
     const session: TerminalSession = {
       merchantId,
       terminal: terminalId,
       amount: amountNum,
       provider: providerStr,
-      invoiceId,
+      invoiceId: finalInvoiceId,
       timestamp: new Date().toISOString(),
       status: "unpaid",
     };
