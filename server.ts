@@ -72,7 +72,7 @@ async function startServer() {
     res.status(200).json({
       success: true,
       message: "Price registered on server successfully",
-      synchronizedUrl: `https://gopay01.vercel.app/?merchant=${merchantId}`
+      synchronizedUrl: amountNum > 0 ? `https://gopay01.vercel.app/?merchant=${merchantId}&amount=${amountNum.toFixed(2)}` : `https://gopay01.vercel.app/?merchant=${merchantId}`
     });
   });
 

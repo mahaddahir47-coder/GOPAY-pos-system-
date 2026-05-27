@@ -80,8 +80,13 @@ export const CheckoutStage: React.FC<CheckoutStageProps> = ({
   const total = subtotal + tax;
 
   // Compute permanent GoPay payment link with live counter status sync
+  const activeMerchantId = settings.merchantId || "R-10245";
+  const qrCodeLink = `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
+
   const getPaymentLink = () => {
-    const activeMerchantId = settings.merchantId || "R-10245";
+    if (cart.length > 0) {
+      return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=${total.toFixed(2)}`;
+    }
     return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
   };
 
@@ -191,7 +196,7 @@ export const CheckoutStage: React.FC<CheckoutStageProps> = ({
 
                   {/* QR Canvas Box with Center-Overlay Logo */}
                   <div className="relative flex items-center justify-center p-1 bg-white rounded-2xl">
-                    <QrCanvas value={paymentLink} size={160} />
+                    <QrCanvas value={qrCodeLink} size={160} />
                     
                     {/* Centered overlay icon representing premium GoPay */}
                     <div className="absolute w-8 h-8 bg-[#00C2B2] rounded-xl flex items-center justify-center border-2 border-white shadow-md">

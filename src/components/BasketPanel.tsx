@@ -140,8 +140,13 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
 
   const invoice = currentInvoice;
 
+  const activeMerchantId = invoice.merchantId || "R-10245";
+  const qrCodeLink = `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
+
   const getPaymentLink = () => {
-    const activeMerchantId = invoice.merchantId || "R-10245";
+    if (cart.length > 0) {
+      return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=${total.toFixed(2)}`;
+    }
     return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
   };
 
@@ -536,7 +541,7 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
 
             {/* Dynamic QrCanvas */}
             <div className="relative flex items-center justify-center p-0.5 bg-white rounded-xl">
-              <QrCanvas value={paymentLink} size={110} />
+              <QrCanvas value={qrCodeLink} size={110} />
               <div className="absolute w-6 h-6 bg-[#00C2B2] rounded-md flex items-center justify-center border border-white shadow-sm">
                 <span className="text-white font-black text-[8px] leading-none">GP</span>
               </div>
@@ -625,7 +630,7 @@ export const BasketPanel: React.FC<BasketPanelProps> = ({
 
             {/* Dynamic QrCanvas with permanent merchant link */}
             <div className="relative flex items-center justify-center p-0.5 bg-white rounded-xl">
-              <QrCanvas value={paymentLink} size={110} />
+              <QrCanvas value={qrCodeLink} size={110} />
               <div className="absolute w-6 h-6 bg-[#00C2B2] rounded-md flex items-center justify-center border border-white shadow-sm">
                 <span className="text-white font-black text-[8px] leading-none">GP</span>
               </div>

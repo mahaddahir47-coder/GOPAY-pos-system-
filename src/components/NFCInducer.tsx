@@ -46,8 +46,14 @@ export const NFCInducer: React.FC<NFCInducerProps> = ({
   const [nfcActive, setNfcActive] = useState(true);
 
   // Compute permanent GoPay payment checkout link with live counter status sync
+  const activeMerchantId = invoice.merchantId || "R-10245";
+  const qrCodeLink = `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
+
   const getPaymentLink = () => {
-    const activeMerchantId = invoice.merchantId || "R-10245";
+    const amountVal = parseFloat(invoice.total as any);
+    if (invoice.items && invoice.items.length > 0 && !isNaN(amountVal) && amountVal > 0) {
+      return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=${amountVal.toFixed(2)}`;
+    }
     return `https://gopay01.vercel.app/?merchant=${activeMerchantId}&amount=`;
   };
 
